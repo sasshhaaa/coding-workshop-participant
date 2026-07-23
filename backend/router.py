@@ -10,22 +10,39 @@ from importlib import import_module
 PORT = 3002
 BASE = os.path.dirname(os.path.abspath(__file__))
 
-SERVICES = ["teams-service", "individuals-service"]
+SERVICES = [
+    "auth-service",
+    "teams-service",
+    "individuals-service",
+    "projects-service",
+    "achievements-service",
+    "metadata-service",
+]
+
 HANDLERS = {}
 
 for name in SERVICES:
-    sys.path.insert(0, os.path.join(BASE, name))
-    HANDLERS[name] = import_module("function").handler
-    del sys.modules["function"]
-    del sys.modules["postgres_service"]
-    sys.path.pop(0)
+    service_dir = os.path.join(BASE, name)
+    if not os.path.isdir(service_dir):
+        print(f"  skipping {name}: directory not found")
+        continue
+    sys.path.insert(0, service_dir)
+    try:
+        HANDLERS[name] = import_module("function").handler
+    except Exception as e:
+        print(f"  failed to load {name}: {e}")
+    finally:
+        # Drop cached modules so the next service loads its own copies.
+        sys.modules.pop("function", None)
+        sys.modules.pop("postgres_service", None)
+        sys.path.pop(0)
 
 
 class Router(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type,Authorization")
 
     def _send(self, status, payload):
         data = payload.encode() if isinstance(payload, str) else payload
@@ -42,7 +59,10 @@ class Router(BaseHTTPRequestHandler):
 
         service = next((p for p in parts if p in HANDLERS), None)
         if not service:
-            return self._send(404, json.dumps({"error": "Unknown service"}))
+            return self._send(404, json.dumps({
+                "error": "Unknown service",
+                "available": sorted(HANDLERS.keys()),
+            }))
 
         tail = parts[parts.index(service) + 1:]
         record_id = tail[-1] if tail and tail[-1].isdigit() else None
@@ -59,6 +79,11 @@ class Router(BaseHTTPRequestHandler):
             event["queryStringParameters"] = {
                 k: v[0] for k, v in parse_qs(parsed.query).items()
             }
+
+        # Pass the bearer token through so services can authorise the caller.
+        auth = self.headers.get("Authorization")
+        if auth:
+            event["headers"] = {"Authorization": auth}
 
         try:
             result = HANDLERS[service](event)
@@ -84,5 +109,5 @@ class Router(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"API on http://localhost:{PORT}")
-    print("Services:", ", ".join(SERVICES))
+    print("Services:", ", ".join(sorted(HANDLERS.keys())))
     HTTPServer(("0.0.0.0", PORT), Router).serve_forever()
