@@ -18,6 +18,7 @@ import {
 } from "../services/api";
 import { can } from "../services/auth";
 import EntityDialog from "../components/EntityDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const THRESHOLD = 20;
 
@@ -210,23 +211,24 @@ function BudgetChart({ groups }) {
 
   const peak = Math.max(...rows.map(([, g]) => Math.max(g.planned, g.spent)), 1);
 
-  const W = 60;      // width of each team's pair of bars
+  const W = 60;
   const GAP = 34;
   const H = 140;
   const chartWidth = rows.length * (W + GAP);
 
   return (
     <Box sx={{ mb: 4 }}>
-      <Stack direction="row" alignItems="center" gap={2.5} sx={{ mb: 2 }}>
+      <Stack direction="row" alignItems="center" flexWrap="wrap"
+        gap={3} sx={{ mb: 2 }}>
         <Typography variant="body2" fontWeight={600}>
           Allocation by team
         </Typography>
-        <Stack direction="row" gap={2}>
-          <Stack direction="row" alignItems="center" gap={0.75}>
+        <Stack direction="row" gap={2.5}>
+          <Stack direction="row" alignItems="center" gap={1}>
             <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: "#B5D4F4" }} />
             <Typography variant="caption" color="text.secondary">Planned</Typography>
           </Stack>
-          <Stack direction="row" alignItems="center" gap={0.75}>
+          <Stack direction="row" alignItems="center" gap={1}>
             <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: "#0B5CD5" }} />
             <Typography variant="caption" color="text.secondary">Spent</Typography>
           </Stack>
@@ -299,7 +301,6 @@ function BudgetManager({ open, onClose, projects, teams, onSaved, canEdit }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  // Reset the working copy each time the dialog opens.
   useEffect(() => {
     if (!open) return;
     const next = {};
@@ -423,7 +424,8 @@ function BudgetManager({ open, onClose, projects, teams, onSaved, canEdit }) {
                 <Box key={groupName}>
                   <Stack direction="row" justifyContent="space-between"
                     alignItems="baseline" gap={3} sx={{ mb: 2 }}>
-                    <Typography variant="body1" fontWeight={600} noWrap>
+                    <Typography variant="body1" fontWeight={600} noWrap
+                      sx={{ minWidth: 0 }}>
                       {groupName}
                     </Typography>
                     <Typography variant="body2" color="text.secondary"
@@ -455,27 +457,21 @@ function BudgetManager({ open, onClose, projects, teams, onSaved, canEdit }) {
                             </Box>
 
                             <TextField
-                              select
-                              label="Team"
-                              size="small"
+                              select label="Team" size="small"
                               value={d.team_id}
                               onChange={set(p.id, "team_id")}
                               disabled={!canEdit || saving}
                               sx={{ width: 160 }}
                               error={!d.team_id}
                             >
-                              <MenuItem value="">
-                                <em>Unassigned</em>
-                              </MenuItem>
+                              <MenuItem value=""><em>Unassigned</em></MenuItem>
                               {teams.map((t) => (
                                 <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
                               ))}
                             </TextField>
 
                             <TextField
-                              label="Planned"
-                              type="number"
-                              size="small"
+                              label="Planned" type="number" size="small"
                               value={d.planned}
                               onChange={set(p.id, "planned")}
                               disabled={!canEdit || saving}
@@ -483,9 +479,7 @@ function BudgetManager({ open, onClose, projects, teams, onSaved, canEdit }) {
                               slotProps={{ htmlInput: { min: 0 } }}
                             />
                             <TextField
-                              label="Spent"
-                              type="number"
-                              size="small"
+                              label="Spent" type="number" size="small"
                               value={d.spent}
                               onChange={set(p.id, "spent")}
                               disabled={!canEdit || saving}
@@ -497,8 +491,7 @@ function BudgetManager({ open, onClose, projects, teams, onSaved, canEdit }) {
 
                           <Box sx={{ mt: 1.25 }}>
                             <LinearProgress
-                              variant="determinate"
-                              value={width}
+                              variant="determinate" value={width}
                               sx={{
                                 height: 8, borderRadius: 4, bgcolor: "grey.200",
                                 "& .MuiLinearProgress-bar": {
@@ -549,11 +542,8 @@ function BudgetManager({ open, onClose, projects, teams, onSaved, canEdit }) {
           {canEdit ? "Cancel" : "Close"}
         </Button>
         {canEdit && (
-          <Button
-            variant="contained"
-            onClick={save}
-            disabled={saving || changed.length === 0}
-          >
+          <Button variant="contained" onClick={save}
+            disabled={saving || changed.length === 0}>
             {saving
               ? "Saving…"
               : changed.length === 0
@@ -575,6 +565,11 @@ export default function Dashboard({ user, onSelectTeam }) {
   const [toast, setToast] = useState("");
   const [dialog, setDialog] = useState(null);
   const [showBudget, setShowBudget] = useState(false);
+
+  // Held as the record itself rather than a boolean, so the confirmation
+  // always knows what it is about to delete.
+  const [confirming, setConfirming] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("all");
@@ -713,14 +708,19 @@ export default function Dashboard({ user, onSelectTeam }) {
     }
   };
 
-  const remove = async (id, name) => {
-    if (!window.confirm(`Delete "${name}"? Its achievements will also be removed.`)) return;
+  const remove = async () => {
+    if (!confirming) return;
+    setDeleting(true);
     try {
-      await teamsApi.remove(id);
-      setToast("Team deleted");
+      await teamsApi.remove(confirming.id);
+      setToast(`"${confirming.name}" deleted`);
+      setConfirming(null);
       load();
     } catch (e) {
       setError(apiError(e));
+      setConfirming(null);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -766,11 +766,8 @@ export default function Dashboard({ user, onSelectTeam }) {
 
       <Stack direction="row" alignItems="center" gap={2} sx={{ mb: 1.5 }}>
         <Typography variant="subtitle2">Budget</Typography>
-        <Button
-          size="small"
-          startIcon={<BarChartIcon />}
-          onClick={() => setShowBudget(true)}
-        >
+        <Button size="small" startIcon={<BarChartIcon />}
+          onClick={() => setShowBudget(true)}>
           {mayUpdate ? "Manage allocation" : "View breakdown"}
         </Button>
       </Stack>
@@ -934,7 +931,7 @@ export default function Dashboard({ user, onSelectTeam }) {
                 )}
                 {mayDelete && (
                   <Tooltip title="Delete team" arrow>
-                    <IconButton color="error" onClick={() => remove(t.id, t.name)}>
+                    <IconButton color="error" onClick={() => setConfirming(t)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -966,8 +963,22 @@ export default function Dashboard({ user, onSelectTeam }) {
         onSave={save}
       />
 
-      <Snackbar open={!!toast} autoHideDuration={3000}
-        onClose={() => setToast("")} message={toast} />
+      <ConfirmDialog
+        open={!!confirming}
+        title="Delete team"
+        message={`Delete "${confirming?.name}"?`}
+        consequence="Its projects and achievements will be removed too. People stay in the directory, unassigned. This cannot be undone."
+        onConfirm={remove}
+        onClose={() => setConfirming(null)}
+        busy={deleting}
+      />
+
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={3000}
+        onClose={() => setToast("")}
+        message={toast}
+      />
     </Box>
   );
 }

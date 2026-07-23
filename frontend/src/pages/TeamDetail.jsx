@@ -15,6 +15,7 @@ import {
 } from "../services/api";
 import { can } from "../services/auth";
 import EntityDialog from "../components/EntityDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const initials = (name = "") =>
   name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -292,6 +293,7 @@ function ProjectRow({ p, onEdit, onDelete, mayUpdate, mayDelete }) {
 function AchievementChart({ achievements }) {
   if (!achievements.length) return null;
 
+  // Bucket by month, then fill the gaps so a quiet month reads as a gap.
   const buckets = {};
   for (const a of achievements) {
     const key = String(a.month).slice(0, 7);
@@ -453,6 +455,12 @@ export default function TeamDetail({ teamId, user, onBack }) {
   const [achievementDialog, setAchievementDialog] = useState(null);
   const [metaDialog, setMetaDialog] = useState(null);
 
+  // One confirmation state for every destructive action. It holds what is
+  // being deleted and how, so the dialog can explain the consequence rather
+  // than just asking "are you sure?".
+  const [confirming, setConfirming] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const isMobile = useMediaQuery({ maxWidth: 768 });
 
   const role = user?.role || "viewer";
@@ -483,6 +491,22 @@ export default function TeamDetail({ teamId, user, onBack }) {
   }, [teamId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const confirmDelete = async () => {
+    if (!confirming) return;
+    setDeleting(true);
+    try {
+      await confirming.remove();
+      setToast(confirming.success);
+      setConfirming(null);
+      load();
+    } catch (e) {
+      setError(apiError(e));
+      setConfirming(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   /* people */
   const personFields = [
@@ -515,14 +539,15 @@ export default function TeamDetail({ teamId, user, onBack }) {
     } catch (e) { throw apiError(e); }
   };
 
-  const removePerson = async (p) => {
-    if (!window.confirm(`Remove ${p.name} from the organisation?`)) return;
-    try {
-      await individualsApi.remove(p.id);
-      setToast("Person removed");
-      load();
-    } catch (e) { setError(apiError(e)); }
-  };
+  const askRemovePerson = (p) => setConfirming({
+    title: "Remove person",
+    message: `Remove ${p.name} from the organisation?`,
+    consequence: "They will be deleted from the directory entirely, not just "
+      + "from this team. Any project assignments will be removed.",
+    confirmLabel: "Remove",
+    success: `${p.name} removed`,
+    remove: () => individualsApi.remove(p.id),
+  });
 
   /* projects */
   const projectFields = [
@@ -565,14 +590,14 @@ export default function TeamDetail({ teamId, user, onBack }) {
     } catch (e) { throw apiError(e); }
   };
 
-  const removeProject = async (p) => {
-    if (!window.confirm(`Delete "${p.name}"?`)) return;
-    try {
-      await projectsApi.remove(p.id);
-      setToast("Project deleted");
-      load();
-    } catch (e) { setError(apiError(e)); }
-  };
+  const askRemoveProject = (p) => setConfirming({
+    title: "Delete project",
+    message: `Delete "${p.name}"?`,
+    consequence: "Its budget figures and member assignments will go with it. "
+      + "This cannot be undone.",
+    success: `"${p.name}" deleted`,
+    remove: () => projectsApi.remove(p.id),
+  });
 
   /* achievements */
   const achievementFields = [
@@ -603,14 +628,13 @@ export default function TeamDetail({ teamId, user, onBack }) {
     } catch (e) { throw apiError(e); }
   };
 
-  const removeAchievement = async (a) => {
-    if (!window.confirm(`Delete "${a.title}"?`)) return;
-    try {
-      await achievementsApi.remove(a.id);
-      setToast("Achievement deleted");
-      load();
-    } catch (e) { setError(apiError(e)); }
-  };
+  const askRemoveAchievement = (a) => setConfirming({
+    title: "Delete achievement",
+    message: `Delete "${a.title}"?`,
+    consequence: "The momentum chart will be recalculated without it.",
+    success: "Achievement deleted",
+    remove: () => achievementsApi.remove(a.id),
+  });
 
   /* metadata */
   const metaFields = [
@@ -635,14 +659,13 @@ export default function TeamDetail({ teamId, user, onBack }) {
     } catch (e) { throw apiError(e); }
   };
 
-  const removeMeta = async (m) => {
-    if (!window.confirm(`Remove "${m.key}"?`)) return;
-    try {
-      await metadataApi.remove(m.id);
-      setToast("Attribute removed");
-      load();
-    } catch (e) { setError(apiError(e)); }
-  };
+  const askRemoveMeta = (m) => setConfirming({
+    title: "Remove attribute",
+    message: `Remove "${m.key.replace(/_/g, " ")}" from this team?`,
+    confirmLabel: "Remove",
+    success: "Attribute removed",
+    remove: () => metadataApi.remove(m.id),
+  });
 
   /* render */
 
@@ -745,7 +768,7 @@ export default function TeamDetail({ teamId, user, onBack }) {
                   )}
                   {mayDelete && (
                     <IconButton size="small" color="error"
-                      onClick={() => removeMeta(m)}>
+                      onClick={() => askRemoveMeta(m)}>
                       <DeleteIcon sx={{ fontSize: 15 }} />
                     </IconButton>
                   )}
@@ -776,7 +799,8 @@ export default function TeamDetail({ teamId, user, onBack }) {
           </Typography>
         </Card>
       ) : (
-        <Hierarchy members={members} onEdit={setPersonDialog} onDelete={removePerson}
+        <Hierarchy members={members} onEdit={setPersonDialog}
+          onDelete={askRemovePerson}
           mayUpdate={mayUpdate} mayDelete={mayDelete} />
       )}
 
@@ -804,7 +828,8 @@ export default function TeamDetail({ teamId, user, onBack }) {
           {projects.map((p, i) => (
             <Box key={p.id}>
               {i > 0 && <Divider />}
-              <ProjectRow p={p} onEdit={setProjectDialog} onDelete={removeProject}
+              <ProjectRow p={p} onEdit={setProjectDialog}
+                onDelete={askRemoveProject}
                 mayUpdate={mayUpdate} mayDelete={mayDelete} />
             </Box>
           ))}
@@ -868,7 +893,7 @@ export default function TeamDetail({ teamId, user, onBack }) {
                   {mayDelete && (
                     <Tooltip title="Delete achievement" arrow>
                       <IconButton size="small" color="error"
-                        onClick={() => removeAchievement(a)}>
+                        onClick={() => askRemoveAchievement(a)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -947,6 +972,17 @@ export default function TeamDetail({ teamId, user, onBack }) {
           : { key: "", value: "" }}
         onClose={() => setMetaDialog(null)}
         onSave={saveMeta}
+      />
+
+      <ConfirmDialog
+        open={!!confirming}
+        title={confirming?.title}
+        message={confirming?.message}
+        consequence={confirming?.consequence}
+        confirmLabel={confirming?.confirmLabel || "Delete"}
+        onConfirm={confirmDelete}
+        onClose={() => setConfirming(null)}
+        busy={deleting}
       />
 
       <Snackbar open={!!toast} autoHideDuration={3000}
