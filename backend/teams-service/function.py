@@ -6,6 +6,7 @@ from decimal import Decimal
 from datetime import date, datetime
 
 import postgres_service as db
+import auth_guard
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -105,6 +106,12 @@ def handler(event=None, context=None):
 
         body = event.get("body")
         data = json.loads(body) if isinstance(body, str) and body else (body or {})
+
+        # Authorise before touching the database, so an unauthorised request
+        # never reaches it. The UI hides what a role can't do; this enforces it.
+        denied = auth_guard.check(event, method)
+        if denied:
+            return denied
 
         if method == "GET" and last == "analytics":
             return respond(200, analytics())

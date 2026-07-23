@@ -26,6 +26,11 @@ for name in SERVICES:
     if not os.path.isdir(service_dir):
         print(f"  skipping {name}: directory not found")
         continue
+
+    # BASE first so services can import the shared auth guard. In AWS the
+    # deploy script copies auth_guard.py into each Lambda bundle instead,
+    # because a zip can't import from a sibling directory.
+    sys.path.insert(0, BASE)
     sys.path.insert(0, service_dir)
     try:
         HANDLERS[name] = import_module("function").handler
@@ -35,6 +40,7 @@ for name in SERVICES:
         # Drop cached modules so the next service loads its own copies.
         sys.modules.pop("function", None)
         sys.modules.pop("postgres_service", None)
+        sys.path.pop(0)
         sys.path.pop(0)
 
 
