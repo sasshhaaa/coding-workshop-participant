@@ -59,6 +59,10 @@ export function can(role, action) {
 }
 
 export function authError(e) {
+  // A caught value isn't guaranteed to be an error object, so guard the whole
+  // thing rather than only its properties.
+  if (!e) return "Something went wrong";
+
   return e.response?.data?.details?.join(", ")
     || e.response?.data?.error
     || e.message
