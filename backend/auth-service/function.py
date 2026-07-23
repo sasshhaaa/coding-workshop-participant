@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import postgres_service as db
@@ -95,7 +95,7 @@ def unb64(text):
 
 def make_token(user):
     header = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    expires = datetime.utcnow() + timedelta(hours=TOKEN_HOURS)
+    expires = datetime.now(timezone.utc) + timedelta(hours=TOKEN_HOURS)
     payload = b64(json.dumps({
         "sub": user["id"],
         "email": user["email"],
@@ -121,7 +121,7 @@ def read_token(token):
         return None
 
     data = json.loads(unb64(payload))
-    if data.get("exp", 0) < datetime.utcnow().timestamp():
+    if data.get("exp", 0) < datetime.now(timezone.utc).timestamp():
         return None
     return data
 

@@ -1,0 +1,15 @@
+[run]
+omit =
+    # Local development shim, replaced by API Gateway in AWS — never deployed.
+    */router.py
+    # Development data loader, not application code.
+    */seed.py
+    # Superseded by router.py.
+    */service.py
+    */test_*.py
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
