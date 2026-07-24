@@ -1,0 +1,30 @@
+
+  (Screenshots)
+
+  -  /home/09cc58c1/coding-workshop-participant/frontend/cypress/screenshots/critical     (1280x720)
+     -path.cy.js/the critical path -- signs in, creates a team, adds a person, and si               
+     gns out (failed).png                                                                           
+  -  /home/09cc58c1/coding-workshop-participant/frontend/cypress/screenshots/critical     (1280x720)
+     -path.cy.js/session handling -- rejects the wrong password without revealing whe               
+     ther the account exists (failed).png                                                           
+  -  /home/09cc58c1/coding-workshop-participant/frontend/cypress/screenshots/critical     (1280x720)
+     -path.cy.js/session handling -- keeps the session across a reload (failed).png                 
+  -  /home/09cc58c1/coding-workshop-participant/frontend/cypress/screenshots/critical     (1280x720)
+     -path.cy.js/role-based access -- hides every write control from a viewer (failed               
+     ).png                                                                                          
+  -  /home/09cc58c1/coding-workshop-participant/frontend/cypress/screenshots/critical     (1280x720)
+     -path.cy.js/the dashboard -- answers the organisation questions the brief asked                
+     -- before each hook (failed).png                                                               
+
+
+================================================================================
+
+  (Run Finished)
+
+
+       Spec                                              Tests  Passing  Failing  Pending  Skipped  
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ ✖  critical-path.cy.js                      01:21        7        1        5        -        1 │
+  └────────────────────────────────────────────────────────────────────────────────────────────────┘
+    ✖  1 of 1 failed (100%)                     01:21        7        1        5        -        1  
+

@@ -16,7 +16,15 @@ import postgres_service as db
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# In production these come from the environment, never from source.
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
+
+# A designated address that always registers as an admin. Without it, a fresh
+# deployment's admin is whoever happens to register first — which is fine
+# locally but leaves a cloud environment with no way back if someone else
+# gets there first.
+BOOTSTRAP_ADMIN_EMAIL = os.getenv("BOOTSTRAP_ADMIN_EMAIL", "").strip().lower()
+
 TOKEN_HOURS = 8
 OTP_MINUTES = 10
 PBKDF2_ROUNDS = 120_000
@@ -66,6 +74,8 @@ def ensure_schema():
     """, fetch=None)
 
 
+# ---------- password hashing ----------
+
 def hash_password(password):
     """PBKDF2-HMAC-SHA256 with a per-user random salt."""
     salt = secrets.token_bytes(16)
@@ -80,10 +90,13 @@ def verify_password(password, stored):
         _, rounds, salt_hex, digest_hex = stored.split("$")
         digest = hashlib.pbkdf2_hmac(
             "sha256", password.encode(), bytes.fromhex(salt_hex), int(rounds))
+        # Constant-time compare so timing can't leak the hash.
         return hmac.compare_digest(digest.hex(), digest_hex)
     except (ValueError, TypeError):
         return False
 
+
+# ---------- JWT ----------
 
 def b64(raw):
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
@@ -126,14 +139,24 @@ def read_token(token):
     return data
 
 
+# ---------- OTP ----------
+# These endpoints are functional but not exposed in the UI, because no email
+# provider is configured. Codes are written to the server log instead.
+
 def hash_code(code):
     return hashlib.sha256(f"{JWT_SECRET}{code}".encode()).hexdigest()
 
 
 def send_code(email, code):
-    """Development delivery: the code is printed to the server log."""
+    """Development delivery: the code is printed to the server log.
+
+    Swap this for SES or SendGrid in production. The rest of the flow is
+    unchanged because delivery is isolated to this one function.
+    """
     print(f"\n=== LOGIN CODE for {email}: {code} (valid {OTP_MINUTES} min) ===\n")
 
+
+# ---------- validation ----------
 
 def validate_registration(data):
     errors = []
@@ -162,6 +185,22 @@ def validate_registration(data):
     return errors
 
 
+def role_for(email):
+    """Decide a new account's role.
+
+    The submitted role is deliberately ignored — honouring it would let anyone
+    register themselves as an admin. Only two things grant admin: being the
+    very first account, or matching the address designated in the environment.
+    """
+    email = str(email).strip().lower()
+
+    if BOOTSTRAP_ADMIN_EMAIL and email == BOOTSTRAP_ADMIN_EMAIL:
+        return "admin"
+
+    existing = db.query("SELECT COUNT(*) AS c FROM users", None, "one")["c"]
+    return "admin" if existing == 0 else "viewer"
+
+
 def public(user):
     return {
         "id": user["id"],
@@ -177,6 +216,8 @@ def caller(event):
     raw = headers.get("Authorization") or headers.get("authorization") or ""
     return read_token(raw.replace("Bearer ", "").strip())
 
+
+# ---------- handler ----------
 
 def handler(event=None, context=None):
     event = event or {}
@@ -198,6 +239,7 @@ def handler(event=None, context=None):
 
         record_id = (event.get("pathParameters") or {}).get("id")
 
+        # --- who am I? ---
         if method == "GET" and action == "me":
             claims = caller(event)
             if not claims:
@@ -207,16 +249,11 @@ def handler(event=None, context=None):
                 "name": claims["name"], "role": claims["role"],
             })
 
+        # --- register ---
         if method == "POST" and action == "register":
             errors = validate_registration(data)
             if errors:
                 return respond(400, {"error": "Validation failed", "details": errors})
-
-            # The first account bootstraps an admin. Everyone after that gets
-            # read-only access - honouring a self-chosen role would be
-            # privilege escalation, so the submitted value is ignored.
-            existing = db.query("SELECT COUNT(*) AS c FROM users", None, "one")["c"]
-            role = "admin" if existing == 0 else "viewer"
 
             user = db.query("""
                 INSERT INTO users (email, name, password_hash, role)
@@ -225,10 +262,11 @@ def handler(event=None, context=None):
                 data["email"].strip().lower(),
                 data["name"].strip(),
                 hash_password(data["password"]),
-                role,
+                role_for(data["email"]),
             ), "one")
             return respond(201, {"token": make_token(user), "user": public(user)})
 
+        # --- password login ---
         if method == "POST" and action == "login":
             email = str(data.get("email", "")).strip().lower()
             password = str(data.get("password", ""))
@@ -245,6 +283,7 @@ def handler(event=None, context=None):
 
             return respond(200, {"token": make_token(user), "user": public(user)})
 
+        # --- request a one-time code ---
         if method == "POST" and action == "request-code":
             email = str(data.get("email", "")).strip().lower()
             if not EMAIL_RE.match(email):
@@ -261,11 +300,13 @@ def handler(event=None, context=None):
                 """, (email, hash_code(code), OTP_MINUTES), fetch=None)
                 send_code(email, code)
 
+            # Always the same reply, whether or not the account exists.
             return respond(200, {
                 "message": f"If that address has an account, a code is on its way. "
                            f"It expires in {OTP_MINUTES} minutes."
             })
 
+        # --- verify a one-time code ---
         if method == "POST" and action == "verify-code":
             email = str(data.get("email", "")).strip().lower()
             code = str(data.get("code", "")).strip()
@@ -300,6 +341,7 @@ def handler(event=None, context=None):
 
             return respond(200, {"token": make_token(user), "user": public(user)})
 
+        # --- change a user's role (admin only) ---
         if method == "PUT" and record_id:
             claims = caller(event)
             if not claims:
@@ -331,6 +373,7 @@ def handler(event=None, context=None):
                 return respond(404, {"error": "User not found"})
             return respond(200, public(user))
 
+        # --- list users (admin only) ---
         if method == "GET":
             claims = caller(event)
             if not claims:

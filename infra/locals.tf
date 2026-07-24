@@ -112,6 +112,16 @@ locals {
     MONGO_NAME    = data.aws_caller_identity.this.id == "000000000000" ? "mongo" : try(one(aws_docdb_cluster.this.*.database_name), "")
     MONGO_USER    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(one(aws_docdb_cluster.this.*.master_username), "")
     MONGO_PASS    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(one(aws_docdb_cluster.this.*.master_password), "")
+
+    # Signs the session tokens. Generated per deployment and held in Terraform
+    # state rather than committed, so the development default in the source
+    # never reaches a real environment.
+    JWT_SECRET = random_password.jwt_secret.result
+
+    # A designated administrator for a fresh deployment. Without this, the
+    # admin is whoever happens to register first, which leaves no way back if
+    # someone else gets there first.
+    BOOTSTRAP_ADMIN_EMAIL = "sasha.admin@acme.com"
   }
   lambda_role_arn = format(
     "arn:%s:iam::%s:role/%s-lambda-%s-%s",
@@ -123,4 +133,13 @@ locals {
     data.aws_partition.this.partition, data.aws_caller_identity.this.id,
     var.aws_project, data.aws_region.this.region, local.app_id
   )
+}
+
+# A signing key that never appears in the repository. Terraform generates it
+# once and reuses it on later deploys, so sessions survive a redeployment.
+# Tainting this resource rotates the key and invalidates every existing
+# session, which is the correct behaviour for a key rotation.
+resource "random_password" "jwt_secret" {
+  length  = 48
+  special = false
 }

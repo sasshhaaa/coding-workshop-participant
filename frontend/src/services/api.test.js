@@ -26,6 +26,12 @@ import { setToken, getToken } from "./auth";
 
 const client = axios.create();
 
+// Derived the same way api.js derives it, so these tests follow the
+// configured API URL rather than breaking whenever it changes.
+const ROOT = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/api`
+  : "http://localhost:3002/api";
+
 // The interceptors register once, when api.js is imported. Capture them now,
 // because clearing mocks between tests would erase that call record.
 const attachToken = client.interceptors.request.use.mock.calls[0][0];
@@ -40,26 +46,35 @@ beforeEach(() => {
   setToken(null);
 });
 
+describe("the API base URL", () => {
+  it("ends with /api so every service path is built consistently", () => {
+    expect(ROOT).toMatch(/\/api$/);
+  });
+
+  it("has no double slash before the path", () => {
+    // A trailing slash on VITE_API_URL would produce "//api" and 404.
+    expect(ROOT).not.toMatch(/\/\/api$/);
+  });
+});
+
 describe("CRUD routes", () => {
   it("lists from the right endpoint", async () => {
     await teamsApi.getAll();
     expect(client.get).toHaveBeenCalledWith(
-      "http://localhost:3002/api/teams-service",
+      `${ROOT}/teams-service`,
       expect.anything()
     );
   });
 
   it("fetches one record by id", async () => {
     await individualsApi.getOne(7);
-    expect(client.get).toHaveBeenCalledWith(
-      "http://localhost:3002/api/individuals-service/7"
-    );
+    expect(client.get).toHaveBeenCalledWith(`${ROOT}/individuals-service/7`);
   });
 
   it("posts to create", async () => {
     await projectsApi.create({ name: "Portal" });
     expect(client.post).toHaveBeenCalledWith(
-      "http://localhost:3002/api/projects-service",
+      `${ROOT}/projects-service`,
       { name: "Portal" }
     );
   });
@@ -67,16 +82,14 @@ describe("CRUD routes", () => {
   it("puts to update, with the id in the path", async () => {
     await achievementsApi.update(3, { title: "Shipped" });
     expect(client.put).toHaveBeenCalledWith(
-      "http://localhost:3002/api/achievements-service/3",
+      `${ROOT}/achievements-service/3`,
       { title: "Shipped" }
     );
   });
 
   it("deletes by id", async () => {
     await metadataApi.remove(5);
-    expect(client.delete).toHaveBeenCalledWith(
-      "http://localhost:3002/api/metadata-service/5"
-    );
+    expect(client.delete).toHaveBeenCalledWith(`${ROOT}/metadata-service/5`);
   });
 
   it("passes query parameters through", async () => {
@@ -102,7 +115,7 @@ describe("service-specific endpoints", () => {
   it("reaches analytics on its own path", async () => {
     await teamsApi.analytics();
     expect(client.get).toHaveBeenCalledWith(
-      "http://localhost:3002/api/teams-service/analytics",
+      `${ROOT}/teams-service/analytics`,
       expect.anything()
     );
   });
@@ -110,7 +123,7 @@ describe("service-specific endpoints", () => {
   it("filters metadata by the entity it belongs to", async () => {
     await metadataApi.forEntity("team", 4);
     expect(client.get).toHaveBeenCalledWith(
-      "http://localhost:3002/api/metadata-service",
+      `${ROOT}/metadata-service`,
       { params: { entity_type: "team", entity_id: 4 } }
     );
   });
@@ -206,6 +219,7 @@ describe("error messages", () => {
 
   it("always says something", () => {
     expect(apiError({})).toBeTruthy();
+    expect(apiError(null)).toBeTruthy();
   });
 });
 

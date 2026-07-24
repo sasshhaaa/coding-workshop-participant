@@ -1,6 +1,12 @@
 import axios from "axios";
 
-const ROOT = "http://localhost:3002/api/auth-service";
+// Vite inlines this at build time. The deploy script sets it from the
+// Terraform output; locally it falls back to the dev router.
+const API_ROOT = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/api`
+  : "http://localhost:3002/api";
+
+const ROOT = `${API_ROOT}/auth-service`;
 const KEY = "acme_token";
 
 // Kept in memory and mirrored to sessionStorage so a refresh doesn't sign you out.
@@ -46,7 +52,9 @@ export const authApi = {
 
 export const ROLES = ["admin", "manager", "contributor", "viewer"];
 
-// One place that decides what each role may do.
+// One place that decides what each role may do. The backend has the same
+// table in auth_guard.py — this one drives what the interface shows, that one
+// is the rule.
 const RULES = {
   admin: { create: true, update: true, delete: true, manageUsers: true },
   manager: { create: true, update: true, delete: true, manageUsers: false },
@@ -55,6 +63,7 @@ const RULES = {
 };
 
 export function can(role, action) {
+  // Unknown roles and unknown actions both fail closed.
   return RULES[role]?.[action] ?? false;
 }
 
@@ -65,6 +74,7 @@ export function authError(e) {
 
   return e.response?.data?.details?.join(", ")
     || e.response?.data?.error
+    || e.response?.data?.message
     || e.message
     || "Something went wrong";
 }

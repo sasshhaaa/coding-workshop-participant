@@ -44,6 +44,22 @@ const ROLE_BLURB = {
   viewer: "Read-only access",
 };
 
+/** The logo is navy, so it's inverted to white for the dark header. */
+function Brand({ light = false }) {
+  return (
+    <Box
+      component="img"
+      src="/citi-logo.svg"
+      alt="Citi"
+      sx={{
+        height: 24,
+        display: "block",
+        filter: light ? "brightness(0) invert(1)" : "none",
+      }}
+    />
+  );
+}
+
 function AccountMenu({ user, onSignOut }) {
   const [anchor, setAnchor] = useState(null);
 
@@ -181,13 +197,23 @@ export default function App() {
       {resetLayout}
 
       <AppBar position="static" elevation={0}>
-        <Toolbar sx={{ minHeight: 60, px: { xs: 2, md: 4 }, gap: 2 }}>
-          <Typography variant="subtitle1"
-            sx={{ fontWeight: 600, letterSpacing: "-0.01em", flex: 1 }}>
+        <Toolbar sx={{ minHeight: 64, px: { xs: 2, md: 4 }, gap: 2 }}>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 600, letterSpacing: "-0.01em", flex: 1 }}
+          >
             ACME team management
           </Typography>
 
-          <AccountMenu user={user} onSignOut={signOut} />
+          <Stack direction="row" alignItems="center" gap={2.5}>
+            <Brand light />
+            <Divider
+              orientation="vertical"
+              flexItem
+              sx={{ borderColor: "rgba(255,255,255,0.3)", my: 1.5 }}
+            />
+            <AccountMenu user={user} onSignOut={signOut} />
+          </Stack>
         </Toolbar>
       </AppBar>
 

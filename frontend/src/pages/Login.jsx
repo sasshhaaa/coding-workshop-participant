@@ -74,35 +74,67 @@ export default function Login({ onSignedIn }) {
         sx={{ width: "100%", maxWidth: 420, mx: "auto", textAlign: "left" }}
       >
         <Box sx={{ bgcolor: "primary.dark", px: 3, py: 2.5 }}>
-          <Typography variant="subtitle1" sx={{ color: "#fff", fontWeight: 600 }}>
-            ACME team management
-          </Typography>
-          <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.75)" }}>
-            Sign in to view and manage your organisation
-          </Typography>
+          <Stack direction="row" justifyContent="space-between"
+            alignItems="flex-start" gap={2}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1"
+                sx={{ color: "#fff", fontWeight: 600 }}>
+                ACME team management
+              </Typography>
+              <Typography variant="caption"
+                sx={{ color: "rgba(255,255,255,0.75)" }}>
+                Sign in to view and manage your organisation
+              </Typography>
+            </Box>
+
+            {/* The logo is navy, so it's inverted to white for the dark panel. */}
+            <Box
+              component="img"
+              src="/citi-logo.svg"
+              alt="Citi"
+              sx={{
+                height: 22,
+                flexShrink: 0,
+                mt: 0.5,
+                filter: "brightness(0) invert(1)",
+              }}
+            />
+          </Stack>
         </Box>
 
+        {/* Both tabs and both submit buttons share their labels, so the tests
+            target ids rather than visible text. Ids are used instead of
+            data attributes because MUI v9 no longer forwards inputProps to
+            the underlying element, but id always reaches it — and it also
+            links the label to the field, which helps screen readers. */}
         <Tabs value={tab} onChange={switchTab} variant="fullWidth">
-          <Tab label="Sign in" />
-          <Tab label="Create account" />
+          <Tab label="Sign in" id="tab-signin" />
+          <Tab label="Create account" id="tab-register" />
         </Tabs>
 
         <CardContent sx={{ p: 3 }}>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} id="auth-error">
+              {error}
+            </Alert>
+          )}
 
           {tab === 0 && (
             <Stack spacing={2.5}>
               <TextField
+                id="signin-email"
                 label="Email" type="email" value={form.email}
                 onChange={set("email")} onKeyDown={(e) => onKeyDown(e, signIn)}
                 autoFocus fullWidth
               />
               <TextField
+                id="signin-password"
                 label="Password" type="password" value={form.password}
                 onChange={set("password")} onKeyDown={(e) => onKeyDown(e, signIn)}
                 fullWidth
               />
               <Button
+                id="submit-signin"
                 variant="contained" onClick={signIn} disabled={busy} fullWidth
                 startIcon={busy ? <CircularProgress size={16} /> : null}
               >
@@ -114,14 +146,17 @@ export default function Login({ onSignedIn }) {
           {tab === 1 && (
             <Stack spacing={2.5}>
               <TextField
+                id="register-name"
                 label="Full name" value={form.name}
                 onChange={set("name")} autoFocus fullWidth
               />
               <TextField
+                id="register-email"
                 label="Email" type="email" value={form.email}
                 onChange={set("email")} fullWidth
               />
               <TextField
+                id="register-password"
                 label="Password" type="password" value={form.password}
                 onChange={set("password")}
                 onKeyDown={(e) => onKeyDown(e, register)}
@@ -131,8 +166,11 @@ export default function Login({ onSignedIn }) {
                 New accounts start with read-only access. An admin can grant you
                 more.
               </Alert>
-              <Button variant="contained" onClick={register}
-                disabled={busy} fullWidth>
+              <Button
+                id="submit-register"
+                variant="contained" onClick={register}
+                disabled={busy} fullWidth
+              >
                 {busy ? "Creating…" : "Create account"}
               </Button>
             </Stack>
